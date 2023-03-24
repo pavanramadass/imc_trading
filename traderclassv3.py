@@ -329,7 +329,11 @@ class Trader:
                 break
 
         return orders
-    
 
-
-        
+    # calculates upper and lower bollinger band
+    def bollinger(self, df: pd.DataFrame, period: int):
+        df['sma'] = df['price'].rolling(period).mean()
+        df['rstd'] = df['price'].rolling(period).std()
+        df['ub'] = df['sma'] + df['rstd'] * 2
+        df['lb'] = df['sma'] - df['rstd'] * 2
+        return df
