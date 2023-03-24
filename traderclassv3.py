@@ -26,11 +26,13 @@ class Trader:
         self.bananas_prices=[]
         self.last_trade_signal=""
         self.trade_amount = 10
+        self.pearls_window_len=10
+        self.bananas_window_len=20
+        # for pearls
+        self.pearls_prices=[]
 
     def update_state(self, state: TradingState) -> None:
         self.state = state
-    #list of pearl's historical price
-    pearls_prices=[]
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         """
@@ -39,8 +41,13 @@ class Trader:
         """
         self.update_state(state)
         self.update_profits()
+        self.UpdatePrices()
+        print("Pearl Prof:", self.individual_profit("PEARLS"))
+        print("Banana Prof:", self.individual_profit("BANANAS"))
         print("Cum Prof:", self.cum_profit)
-
+        print("BANANA buy order stats", self.buy_order_stats["BANANAS"])
+        print("BANANA sell order stats", self.sell_order_stats["BANANAS"])
+        self.PrintTrades(state)
         # Initialize the method output dict as an empty dict
         result = {}
 
@@ -58,12 +65,9 @@ class Trader:
 
                 #append price
                 #price=self.GetAveragePrice(order_depth)
-                price=self.GetLastPrice("PEARLS")
                 signal="HOLD"
-                if(price!=0):
-                    Trader.pearls_prices.append(price)
-                    if(len(Trader.pearls_prices)>=3):
-                        signal=self.SimpleGrid()
+                if(len(self.pearls_prices)>=3):
+                    signal=self.SimpleGrid()
 
                 #simple grid, explain in the method
 
@@ -83,22 +87,34 @@ class Trader:
                 '''
 
                 result[product] = orders
+
             if product == 'BANANAS':
-                price=self.GetLastPrice("BANANAS")
-                if(price!=0):
-                    self.bananas_prices.append(price)
-                '''
+                #self.execute_trading_logic()
+                
                 orders = self.execute_trading_logic()
                 if(orders!=None):
                     result[product] = orders
-                '''
+                    self.new_order_placed[product]=True
+                
                 
         #print basic data
-        self.PrintTrades(state)
         # self.PrintPosition(state)
         return result
     
     #averagerpice, might not be optimal, can always switch to close price/midprice
+    def UpdatePrices(self):
+        for product in self.state.order_depths.keys():
+            if product == 'PEARLS':
+                price=self.GetLastPrice(product)
+                self.pearls_prices.append(price)
+                if(len(self.pearls_prices)>self.pearls_window_len):
+                    self.pearls_prices.pop(0)
+            if product=='BANANAS':
+                price=self.GetLastPrice(product)
+                self.bananas_prices.append(price)
+                if(len(self.bananas_prices)>self.bananas_window_len):
+                    self.bananas_prices.pop(0)
+
     def GetAveragePrice(self, order_depths:OrderDepth) -> int:
         buy_sum = sum(price * size for price, size in order_depths.buy_orders.items())
         buy_size = sum(size for size in order_depths.buy_orders.values())
@@ -119,7 +135,7 @@ class Trader:
     
     # simple grid for testing, when U shape buy, when n shape sell, other situation hold 
     def SimpleGrid(self) -> str:
-        prices=Trader.pearls_prices
+        prices=self.pearls_prices
         length = len(prices)
         signal = "HOLD"
         i = 2#dont want equals, might produce consecutive buy/sell signals
@@ -147,9 +163,9 @@ class Trader:
             if(self.UnrealizedProfit(state)<0):
                 print("   Pirce Hist:")
                 for i in range(10):
-                    index = len(Trader.pearls_prices) - i - 1 
-                    if index >= 0 and index < len(Trader.pearls_prices):
-                        print(Trader.pearls_prices[index])
+                    index = len(self.pearls_prices) - i - 1 
+                    if index >= 0 and index < len(self.pearls_prices):
+                        print(self.pearls_prices[index])
             print(f"{product}: {pos}")
     
     #return your unrealized_profit
@@ -158,7 +174,7 @@ class Trader:
 
         for product, position in state.position.items():
             symbol = product
-            current_price = Trader.pearls_prices[-1]
+            current_price = self.pearls_prices[-1]
 
             # Calculate profit for long positions
             if position > 0:
@@ -189,7 +205,6 @@ class Trader:
     #update profit 
     def update_order_stats(self, symbol: str):
         last_own_trades = self.state.own_trades[symbol]
-
         for trade in last_own_trades:
             if trade.buyer == "SUBMISSION":
                 self.update_order_stats_dict(self.buy_order_stats, symbol, trade.price, trade.quantity)
@@ -243,10 +258,11 @@ class Trader:
         current_signal = supertrend_df.iloc[-1]['signal']
         if current_signal != self.last_trade_signal:
             if current_signal == 'long':
-                self.buy_bananas()
+                self.last_trade_signal = current_signal
+                return self.buy_bananas()
             elif current_signal == 'short':
-                self.sell_bananas()
-            self.last_trade_signal = current_signal
+                self.last_trade_signal = current_signal
+                return self.sell_bananas()
         return 
 
     def calculate_supertrend(self, df: pd.DataFrame, period: int, factor: float) -> pd.DataFrame:
@@ -277,15 +293,16 @@ class Trader:
         # Implement your sell logic here
         print("Sell signal")
     '''
+    #buy order have to match sell_orders keys and vise versa
     def buy_bananas(self):
         orders: list[Order] = []
         remaining_trade_amount = self.trade_amount
         symbol = "BANANAS"
-        sorted_bids = sorted(self.state.order_depths[symbol].buy_orders.keys(), reverse=True)
+        sorted_bids = self.state.order_depths[symbol].sell_orders.keys()
         
         for bid in sorted_bids:
-            bid_volume = self.state.order_depths[symbol].buy_orders[bid]
-            trade_volume = min(remaining_trade_amount, bid_volume)
+            bid_volume = -self.state.order_depths[symbol].sell_orders[bid]#positive
+            trade_volume = min(remaining_trade_amount, bid_volume)#positive 
             orders.append(Order(symbol, bid, trade_volume))
             remaining_trade_amount -= trade_volume
             print(f"Buy signal - Buying {trade_volume} bananas at {bid} each")
@@ -299,10 +316,10 @@ class Trader:
         orders: list[Order] = []
         remaining_trade_amount = self.trade_amount
         symbol = "BANANAS"
-        sorted_asks = sorted(self.state.order_depths[symbol].sell_orders.keys())
+        sorted_asks = self.state.order_depths[symbol].buy_orders.keys()
 
         for ask in sorted_asks:
-            ask_volume = self.state.order_depths[symbol].sell_orders[ask]
+            ask_volume = self.state.order_depths[symbol].buy_orders[ask]#positive
             trade_volume = min(remaining_trade_amount, ask_volume)
             orders.append(Order(symbol, ask, -trade_volume))
             remaining_trade_amount -= trade_volume
@@ -312,7 +329,7 @@ class Trader:
                 break
 
         return orders
-
+    
 
 
         
