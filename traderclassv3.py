@@ -10,27 +10,55 @@ class Trader:
         self.individual_profits: Dict[str, int] = {}
         self.new_order_placed: Dict[str, bool] = {
             "PEARLS": False,
-            "BANANAS": False
+            "BANANAS": False,
+            "COCONUTS": False,
+            "PINA COLADA": False
         }
         self.buy_order_stats: Dict[str, List[int]] = {
             "PEARLS": [0, 0],
-            "BANANAS": [0, 0]
+            "BANANAS": [0, 0],
+            "COCONUTS": [0, 0],
+            "PINA COLADA": [0, 0]
         }
         self.sell_order_stats: Dict[str, List[int]] = {
             "PEARLS": [0, 0],
-            "BANANAS": [0, 0]
+            "BANANAS": [0, 0],
+            "COCONUTS": [0, 0],
+            "PINA COLADA": [0, 0]
         }
         #for bananas stratey
-        self.factor = 3
-        self.period = 7
-        self.bananas_prices=[]
-        self.last_trade_signal=""
-        self.trade_amount = 10
-        self.pearls_window_len=10
-        self.bananas_window_len=20
-        # for pearls
-        self.pearls_prices=[]
+        self.banana_factor = 3
+        self.banana_period = 7
+        self.banana_prices=[]
+        self.banana_last_trade_signal=""
+        self.banana_trade_amount = 10
+        self.banana_window_len = 20
+ 
 
+        # for pearls
+        self.pearl_factor = 3
+        self.pearl_period = 7
+        self.pearl_prices=[]
+        self.pearl_last_trade_signal=""
+        self.pearl_trade_amount = 10
+        self.pearl_window_len=10
+
+        # for coconuts
+        self.coconut_factor = 3
+        self.coconut_period = 7
+        self.coconut_prices=[]
+        self.coconut_last_trade_signal=""
+        self.coconut_trade_amount = None
+        self.coconut_window_len = 10
+
+        # for pina colada
+        self.pina_factor = 3
+        self.pina_period = 7
+        self.pina_prices=[]
+        self.pina_last_trade_signal=""
+        self.pina_trade_amount = None
+        self.pina_window_len = 20
+        
     def update_state(self, state: TradingState) -> None:
         self.state = state
 
@@ -54,6 +82,12 @@ class Trader:
         # Iterate over all the keys (the available products) contained in the order dephts
         for product in state.order_depths.keys():
 
+            orders = self.execute_trading_logic(product)
+            if(orders!=None):
+                result[product] = orders
+                self.new_order_placed[product]=True
+
+            """
             # Check if the current product is the 'PEARLS' product, only then run the order logic
             if product == 'PEARLS':
 
@@ -91,7 +125,7 @@ class Trader:
             if product == 'BANANAS':
                 #self.execute_trading_logic()
                 
-                orders = self.execute_trading_logic()
+                orders = self.execute_trading_logic(product)
                 if(orders!=None):
                     result[product] = orders
                     self.new_order_placed[product]=True
@@ -99,6 +133,7 @@ class Trader:
                 
         #print basic data
         # self.PrintPosition(state)
+        """
         return result
     
     #averagerpice, might not be optimal, can always switch to close price/midprice
@@ -106,14 +141,24 @@ class Trader:
         for product in self.state.order_depths.keys():
             if product == 'PEARLS':
                 price=self.GetLastPrice(product)
-                self.pearls_prices.append(price)
-                if(len(self.pearls_prices)>self.pearls_window_len):
-                    self.pearls_prices.pop(0)
+                self.pearl_prices.append(price)
+                if(len(self.pearl_prices)>self.pearl_window_len):
+                    self.pearl_prices.pop(0)
             if product=='BANANAS':
                 price=self.GetLastPrice(product)
-                self.bananas_prices.append(price)
-                if(len(self.bananas_prices)>self.bananas_window_len):
-                    self.bananas_prices.pop(0)
+                self.banana_prices.append(price)
+                if(len(self.banana_prices)>self.banana_window_len):
+                    self.banana_prices.pop(0)
+            if product=='COCONUTS':
+                price=self.GetLastPrice(product)
+                self.coconut_prices.append(price)
+                if(len(self.coconut_prices)>self.coconut_window_len):
+                    self.coconut_prices.pop(0)
+            if product=='PINA COLADA':
+                price=self.GetLastPrice(product)
+                self.pina_prices.append(price)
+                if(len(self.pina_prices)>self.pina_window_len):
+                    self.pina_prices.pop(0)
 
     def GetAveragePrice(self, order_depths:OrderDepth) -> int:
         buy_sum = sum(price * size for price, size in order_depths.buy_orders.items())
@@ -135,10 +180,10 @@ class Trader:
     
     # simple grid for testing, when U shape buy, when n shape sell, other situation hold 
     def SimpleGrid(self) -> str:
-        prices=self.pearls_prices
+        prices=self.pearl_prices
         length = len(prices)
         signal = "HOLD"
-        i = 2#dont want equals, might produce consecutive buy/sell signals
+        i = 2 #dont want equals, might produce consecutive buy/sell signals
         while prices[length - i] == prices[length - 3] and i < length:
             i += 1
         if prices[length - 1] > prices[length - i] and prices[length - i] < prices[length - (i + 1)]:
@@ -161,11 +206,11 @@ class Trader:
         print("Position:")
         for product, pos in position_dict.items():
             if(self.UnrealizedProfit(state)<0):
-                print("   Pirce Hist:")
+                print("   Price Hist:")
                 for i in range(10):
-                    index = len(self.pearls_prices) - i - 1 
-                    if index >= 0 and index < len(self.pearls_prices):
-                        print(self.pearls_prices[index])
+                    index = len(self.pearl_prices) - i - 1 
+                    if index >= 0 and index < len(self.pearl_prices):
+                        print(self.pearl_prices[index])
             print(f"{product}: {pos}")
     
     #return your unrealized_profit
@@ -174,7 +219,7 @@ class Trader:
 
         for product, position in state.position.items():
             symbol = product
-            current_price = self.pearls_prices[-1]
+            current_price = self.pearl_prices[-1]
 
             # Calculate profit for long positions
             if position > 0:
@@ -246,24 +291,73 @@ class Trader:
     def individual_profit(self, symbol: str) -> int:
         return self.individual_profits.get(symbol, 0)
 
-    #BANANNANANANANANAN
-    def execute_trading_logic(self):
-        if len(self.bananas_prices) < self.period + 1:
-            # Not enough data to calculate SuperTrend
+    def execute_trading_logic(self, symbol: str):        
+        if symbol == "BANANAS":
+            if len(self.banana_prices) < self.banana_period + 1:
+                return 
+            df = pd.DataFrame(self.banana_prices, columns=['price'])
+            df = self.calculate_supertrend(df, self.banana_period, self.banana_factor)
+            df = self.bollinger(df, self.banana_period)
+
+            current_signal = df.iloc[-1]['signal']
+            if current_signal != self.last_trade_signal:
+                if current_signal == 'long':
+                    self.last_trade_signal = current_signal
+                    return self.buy(symbol)
+                elif current_signal == 'short':
+                    self.last_trade_signal = current_signal
+                    return self.sell(symbol)
             return
+        elif symbol == "PEARLS":
+            if len(self.pearl_prices) < self.pearl_period + 1:
+                return 
+            df = pd.DataFrame(self.pearl_prices, columns=['price'])
+            df = self.calculate_supertrend(df, self.pearl_period, self.pearl_factor)
+            df = self.bollinger(df, self.pearl_period)
 
-        df = pd.DataFrame(self.bananas_prices, columns=['price'])
-        supertrend_df = self.calculate_supertrend(df, self.period, self.factor)
+            current_signal = df.iloc[-1]['signal']
+            if current_signal != self.last_trade_signal:
+                if current_signal == 'long':
+                    self.last_trade_signal = current_signal
+                    return self.buy(symbol)
+                elif current_signal == 'short':
+                    self.last_trade_signal = current_signal
+                    return self.sell(symbol)
+            return
+        elif symbol == "COCONUTS":
+            if len(self.coconut_prices) < self.coconut_period + 1:
+                return 
+            df = pd.DataFrame(self.coconut_prices, columns=['price'])
+            df = self.calculate_supertrend(df, self.coconut_period, self.coconut_factor)
+            df = self.bollinger(df, self.coconut_period)
 
-        current_signal = supertrend_df.iloc[-1]['signal']
-        if current_signal != self.last_trade_signal:
-            if current_signal == 'long':
-                self.last_trade_signal = current_signal
-                return self.buy_bananas()
-            elif current_signal == 'short':
-                self.last_trade_signal = current_signal
-                return self.sell_bananas()
-        return 
+            current_signal = df.iloc[-1]['signal']
+            if current_signal != self.last_trade_signal:
+                if current_signal == 'long':
+                    self.last_trade_signal = current_signal
+                    return self.buy(symbol)
+                elif current_signal == 'short':
+                    self.last_trade_signal = current_signal
+                    return self.sell(symbol)
+            return
+        elif symbol == "PINA_COLADA":
+            if len(self.pina_prices) < self.pina_period + 1:
+                return 
+            df = pd.DataFrame(self.pina_prices, columns=['price'])
+            df = self.calculate_supertrend(df, self.pina_period, self.pina_factor)
+            df = self.bollinger(df, self.pina_period)
+
+            current_signal = df.iloc[-1]['signal']
+            if current_signal != self.last_trade_signal:
+                if current_signal == 'long':
+                    self.last_trade_signal = current_signal
+                    return self.buy(symbol)
+                elif current_signal == 'short':
+                    self.last_trade_signal = current_signal
+                    return self.sell(symbol)
+            return
+        else:
+            raise Exception("Invalid symbol type for execute_trading_logic function.\nAcceptable symbols: BANANAS, PEARLS, COCONUTS, PINA_COLADA")
 
     def calculate_supertrend(self, df: pd.DataFrame, period: int, factor: float) -> pd.DataFrame:
         # Calculate HL2, ATR, Up, and Dn
@@ -284,21 +378,32 @@ class Trader:
                 df.loc[i, 'signal'] = 'short'
 
         return df
-    '''
-    def buy_bananas(self):
-        # Implement your buy logic here
-        print("Buy signal")
+    
+    # calculates upper and lower bollinger band
+    def bollinger(self, df: pd.DataFrame, period: int):
+        df['sma'] = df['price'].rolling(period).mean()
+        df['rstd'] = df['price'].rolling(period).std()
+        df['ub'] = df['sma'] + df['rstd'] * 2
+        df['lb'] = df['sma'] - df['rstd'] * 2
+        return df
 
-    def sell_bananas(self):
-        # Implement your sell logic here
-        print("Sell signal")
-    '''
     #buy order have to match sell_orders keys and vise versa
-    def buy_bananas(self):
+    def buy(self, symbol: str):
         orders: list[Order] = []
-        remaining_trade_amount = self.trade_amount
-        symbol = "BANANAS"
-        sorted_bids = self.state.order_depths[symbol].sell_orders.keys()
+        if symbol == 'BANANAS':
+            remaining_trade_amount = self.banana_trade_amount
+            sorted_bids = self.state.order_depths[symbol].sell_orders.keys()
+        elif symbol == 'PEARLS':
+            remaining_trade_amount = self.pearl_trade_amount
+            sorted_bids = self.state.order_depths[symbol].sell_orders.keys()
+        elif symbol == 'COCONUTS':
+            remaining_trade_amount = self.coconut_trade_amount
+            sorted_bids = self.state.order_depths[symbol].sell_orders.keys()
+        elif symbol == 'PINA_COLADA':
+            remaining_trade_amount = self.pina_trade_amount
+            sorted_bids = self.state.order_depths[symbol].sell_orders.keys()
+        else:
+            raise Exception(f"Invalid Symbol: {symbol}")
         
         for bid in sorted_bids:
             bid_volume = -self.state.order_depths[symbol].sell_orders[bid]#positive
@@ -312,28 +417,31 @@ class Trader:
 
         return orders
 
-    def sell_bananas(self):
+    def sell(self, symbol: str):
         orders: list[Order] = []
-        remaining_trade_amount = self.trade_amount
-        symbol = "BANANAS"
-        sorted_asks = self.state.order_depths[symbol].buy_orders.keys()
+        if symbol == 'BANANAS':
+            remaining_trade_amount = self.banana_trade_amount
+            sorted_asks = self.state.order_depths[symbol].buy_orders.keys()
+        elif symbol == 'PEARLS':
+            remaining_trade_amount = self.pearl_trade_amount
+            sorted_asks = self.state.order_depths[symbol].buy_orders.keys()
+        elif symbol == 'COCONUTS':
+            remaining_trade_amount = self.coconut_trade_amount
+            sorted_asks = self.state.order_depths[symbol].buy_orders.keys()
+        elif symbol == 'PINA_COLADA':
+            remaining_trade_amount = self.pina_trade_amount
+            sorted_asks = self.state.order_depths[symbol].buy_orders.keys()
+        else:
+            raise Exception(f"Invalid symbol: {symbol}")
 
         for ask in sorted_asks:
             ask_volume = self.state.order_depths[symbol].buy_orders[ask]#positive
             trade_volume = min(remaining_trade_amount, ask_volume)
             orders.append(Order(symbol, ask, -trade_volume))
             remaining_trade_amount -= trade_volume
-            print(f"Sell signal - Selling {trade_volume} bananas at {ask} each")
+            print(f"Sell signal - Selling {trade_volume} {symbol} at {ask} each")
 
             if remaining_trade_amount <= 0:
                 break
 
         return orders
-
-    # calculates upper and lower bollinger band
-    def bollinger(self, df: pd.DataFrame, period: int):
-        df['sma'] = df['price'].rolling(period).mean()
-        df['rstd'] = df['price'].rolling(period).std()
-        df['ub'] = df['sma'] + df['rstd'] * 2
-        df['lb'] = df['sma'] - df['rstd'] * 2
-        return df
